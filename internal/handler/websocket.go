@@ -35,7 +35,7 @@ func HandleWebSocket(hub *ws.Hub, w http.ResponseWriter, r *http.Request) {
 
 	// Step 3: Read messages in a loop until the client disconnects.
 	for {
-		messageType, message, err := conn.ReadMessage()
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Printf("read error: %v", err)
 			break
@@ -43,11 +43,8 @@ func HandleWebSocket(hub *ws.Hub, w http.ResponseWriter, r *http.Request) {
 
 		log.Printf("received: %s", message)
 
-		// Echo the message back.
-		if err := conn.WriteMessage(messageType, message); err != nil {
-			log.Printf("write error: %v", err)
-			break
-		}
+		// Send the message to the Hub for broadcasting to all clients.
+		hub.Broadcast(message)
 	}
 
 	// Step 4: Unregister the client when the read loop exits.

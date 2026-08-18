@@ -1,6 +1,10 @@
 package websocket
 
-import "log"
+import (
+	"log"
+
+	"github.com/gorilla/websocket"
+)
 
 // Hub manages all connected WebSocket clients.
 // Only the Hub goroutine reads or writes the clients map.
@@ -9,6 +13,7 @@ type Hub struct {
 	clients    map[*Client]bool // all connected clients
 	register   chan *Client     // incoming registration requests
 	unregister chan *Client     // incoming disconnect requests
+	broadcast  chan []byte      // incoming messages to send to all clients
 }
 
 // NewHub creates a Hub with initialized channels.
@@ -17,6 +22,7 @@ func NewHub() *Hub {
 		clients:    make(map[*Client]bool),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		broadcast:  make(chan []byte),
 	}
 }
 
@@ -30,6 +36,12 @@ func (h *Hub) Register(client *Client) {
 // This is safe to call from any goroutine.
 func (h *Hub) Unregister(client *Client) {
 	h.unregister <- client
+}
+
+// Broadcast sends a message to the broadcast channel.
+// This is safe to call from any goroutine.
+func (h *Hub) Broadcast(message []byte) {
+	h.broadcast <- message
 }
 
 // Run starts the Hub event loop.
@@ -47,6 +59,15 @@ func (h *Hub) Run() {
 				delete(h.clients, client)
 				client.conn.Close()
 				log.Printf("client unregistered (%d total)", len(h.clients))
+			}
+
+		case message := <-h.broadcast:
+			for client := range h.clients {
+				if err := client.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+					log.Printf("broadcast write error: %v", err)
+					client.conn.Close()
+					delete(h.clients, client)
+				}
 			}
 		}
 	}

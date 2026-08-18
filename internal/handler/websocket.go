@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 
+	ws "realtime-chat-api/internal/websocket"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -16,38 +18,39 @@ var upgrader = websocket.Upgrader{
 }
 
 // HandleWebSocket upgrades the HTTP request to a WebSocket connection,
-// then reads and echoes messages back to the client.
-func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+// creates a Client, registers it with the Hub, and runs the read loop.
+func HandleWebSocket(hub *ws.Hub, w http.ResponseWriter, r *http.Request) {
 	// Step 1: Upgrade the connection.
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("upgrade error: %v", err)
 		return
 	}
-	// Step 7: Ensure the connection is closed when this function returns.
-	defer conn.Close()
+
+	// Step 2: Create a Client and register it with the Hub.
+	client := ws.NewClient(hub, conn)
+	hub.Register(client)
 
 	log.Printf("client connected: %s", conn.RemoteAddr())
 
-	// Step 2: Read messages in a loop until the client disconnects or an error occurs.
+	// Step 3: Read messages in a loop until the client disconnects.
 	for {
-		// ReadMessage returns the message type and the message bytes.
-		// messageType is usually textMessage (1) or binaryMessage (2).
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
-			// A read error means the client disconnected or the connection broke.
 			log.Printf("read error: %v", err)
 			break
 		}
 
 		log.Printf("received: %s", message)
 
-		// Step 3: Echo the message back using the same message type.
+		// Echo the message back.
 		if err := conn.WriteMessage(messageType, message); err != nil {
 			log.Printf("write error: %v", err)
 			break
 		}
 	}
 
+	// Step 4: Unregister the client when the read loop exits.
+	hub.Unregister(client)
 	log.Printf("client disconnected: %s", conn.RemoteAddr())
 }

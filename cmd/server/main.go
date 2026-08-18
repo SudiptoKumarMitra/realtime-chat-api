@@ -5,16 +5,22 @@ import (
 	"net/http"
 
 	"realtime-chat-api/internal/handler"
+	ws "realtime-chat-api/internal/websocket"
 )
 
 func main() {
-	// Register the /ws endpoint with our WebSocket handler.
-	http.HandleFunc("/ws", handler.HandleWebSocket)
+	// Create the Hub and start its event loop in a background goroutine.
+	hub := ws.NewHub()
+	go hub.Run()
+
+	// Use a closure to pass the Hub to the WebSocket handler.
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		handler.HandleWebSocket(hub, w, r)
+	})
 
 	addr := ":8080"
 	log.Printf("server starting on %s", addr)
 
-	// Start the HTTP server. ListenAndServe blocks until the server stops.
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

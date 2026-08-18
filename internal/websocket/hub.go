@@ -1,10 +1,6 @@
 package websocket
 
-import (
-	"log"
-
-	"github.com/gorilla/websocket"
-)
+import "log"
 
 // Hub manages all connected WebSocket clients.
 // Only the Hub goroutine reads or writes the clients map.
@@ -57,16 +53,21 @@ func (h *Hub) Run() {
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
+				close(client.send)
 				client.conn.Close()
 				log.Printf("client unregistered (%d total)", len(h.clients))
 			}
 
 		case message := <-h.broadcast:
 			for client := range h.clients {
-				if err := client.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-					log.Printf("broadcast write error: %v", err)
-					client.conn.Close()
+				select {
+				case client.send <- message:
+				default:
+					// Client is too slow, drop it.
+					log.Printf("client too slow, dropping: %s", client.conn.RemoteAddr())
+					close(client.send)
 					delete(h.clients, client)
+					client.conn.Close()
 				}
 			}
 		}

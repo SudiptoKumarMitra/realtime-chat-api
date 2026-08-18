@@ -18,7 +18,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // HandleWebSocket upgrades the HTTP request to a WebSocket connection,
-// creates a Client, registers it with the Hub, and runs the read loop.
+// creates a Client, registers it with the Hub, and starts the pump goroutines.
 func HandleWebSocket(hub *ws.Hub, w http.ResponseWriter, r *http.Request) {
 	// Step 1: Upgrade the connection.
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -33,21 +33,10 @@ func HandleWebSocket(hub *ws.Hub, w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("client connected: %s", conn.RemoteAddr())
 
-	// Step 3: Read messages in a loop until the client disconnects.
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			log.Printf("read error: %v", err)
-			break
-		}
+	// Step 3: Start WritePump in its own goroutine.
+	go client.WritePump()
 
-		log.Printf("received: %s", message)
-
-		// Send the message to the Hub for broadcasting to all clients.
-		hub.Broadcast(message)
-	}
-
-	// Step 4: Unregister the client when the read loop exits.
-	hub.Unregister(client)
-	log.Printf("client disconnected: %s", conn.RemoteAddr())
+	// Step 4: Run ReadPump synchronously.
+	// This blocks until the client disconnects.
+	client.ReadPump()
 }

@@ -2,6 +2,12 @@ package websocket
 
 import "log"
 
+// joinRequest is a request to join a room.
+type joinRequest struct {
+	client *Client
+	roomID string
+}
+
 // Hub manages all connected WebSocket clients.
 // Only the Hub goroutine reads or writes the clients map.
 // Other goroutines communicate via channels.
@@ -10,6 +16,7 @@ type Hub struct {
 	register   chan *Client     // incoming registration requests
 	unregister chan *Client     // incoming disconnect requests
 	broadcast  chan Message     // incoming messages to send to all clients
+	join       chan joinRequest // incoming join requests
 }
 
 // NewHub creates a Hub with initialized channels.
@@ -19,6 +26,7 @@ func NewHub() *Hub {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan Message),
+		join:       make(chan joinRequest),
 	}
 }
 
@@ -40,6 +48,12 @@ func (h *Hub) Broadcast(message Message) {
 	h.broadcast <- message
 }
 
+// Join sends a join request to the join channel.
+// This is safe to call from any goroutine.
+func (h *Hub) Join(client *Client, roomID string) {
+	h.join <- joinRequest{client: client, roomID: roomID}
+}
+
 // Run starts the Hub event loop.
 // It blocks forever, processing register/unregister events one at a time.
 // This goroutine is the ONLY code that touches the clients map.
@@ -58,8 +72,15 @@ func (h *Hub) Run() {
 				log.Printf("client unregistered (%d total)", len(h.clients))
 			}
 
+		case req := <-h.join:
+			req.client.room = req.roomID
+			log.Printf("client joined room: %s", req.roomID)
+
 		case message := <-h.broadcast:
 			for client := range h.clients {
+				if message.RoomID != "" && client.room != message.RoomID {
+					continue
+				}
 				select {
 				case client.send <- message:
 				default:

@@ -14,6 +14,7 @@ type Client struct {
 	hub  *Hub
 	conn *websocket.Conn
 	send chan Message // outbound messages, buffered
+	room string       // current room ID, empty means global
 }
 
 // NewClient creates a Client bound to a Hub and a WebSocket connection.
@@ -65,6 +66,12 @@ func (c *Client) ReadPump() {
 		}
 
 		log.Printf("received: %s", msg.Content)
-		c.hub.Broadcast(msg)
+
+		switch msg.Type {
+		case "join":
+			c.hub.Join(c, msg.RoomID)
+		default:
+			c.hub.Broadcast(msg)
+		}
 	}
 }

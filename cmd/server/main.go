@@ -18,7 +18,7 @@ func main() {
 		handler.HandleWebSocket(hub, w, r)
 	})
 
-	addr := ":8080"
+	addr := ":8081"
 	log.Printf("server starting on %s", addr)
 
 	if err := http.ListenAndServe(addr, nil); err != nil {

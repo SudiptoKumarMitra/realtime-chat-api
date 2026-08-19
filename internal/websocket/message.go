@@ -7,4 +7,5 @@ package websocket
 type Message struct {
 	Type    string `json:"type"`
 	Content string `json:"content"`
+	RoomID  string `json:"room_id,omitempty"`
 }

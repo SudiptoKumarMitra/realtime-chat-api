@@ -9,7 +9,7 @@ type Hub struct {
 	clients    map[*Client]bool // all connected clients
 	register   chan *Client     // incoming registration requests
 	unregister chan *Client     // incoming disconnect requests
-	broadcast  chan []byte      // incoming messages to send to all clients
+	broadcast  chan Message     // incoming messages to send to all clients
 }
 
 // NewHub creates a Hub with initialized channels.
@@ -18,7 +18,7 @@ func NewHub() *Hub {
 		clients:    make(map[*Client]bool),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		broadcast:  make(chan []byte),
+		broadcast:  make(chan Message),
 	}
 }
 
@@ -36,7 +36,7 @@ func (h *Hub) Unregister(client *Client) {
 
 // Broadcast sends a message to the broadcast channel.
 // This is safe to call from any goroutine.
-func (h *Hub) Broadcast(message []byte) {
+func (h *Hub) Broadcast(message Message) {
 	h.broadcast <- message
 }
 
@@ -63,7 +63,6 @@ func (h *Hub) Run() {
 				select {
 				case client.send <- message:
 				default:
-					// Client is too slow, drop it.
 					log.Printf("client too slow, dropping: %s", client.conn.RemoteAddr())
 					close(client.send)
 					delete(h.clients, client)

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"realtime-chat-api/internal/handler"
+	"realtime-chat-api/internal/service"
 	ws "realtime-chat-api/internal/websocket"
 )
 
@@ -13,15 +14,25 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 
-	// Use a closure to pass the Hub to the WebSocket handler.
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	// Create the auth service and handler.
+	auth := service.NewAuthService()
+	authHandler := handler.NewAuthHandler(auth)
+
+	// Set up routes.
+	mux := http.NewServeMux()
+
+	// WebSocket endpoint.
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		handler.HandleWebSocket(hub, w, r)
 	})
+
+	// Auth endpoints.
+	authHandler.RegisterRoutes(mux)
 
 	addr := ":8081"
 	log.Printf("server starting on %s", addr)
 
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }

@@ -70,7 +70,7 @@ func (h *authHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.auth.Login(req.Username, req.Password)
+	user, token, err := h.auth.Login(req.Username, req.Password)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -83,5 +83,6 @@ func (h *authHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"message":  "login successful",
 		"user_id":  user.ID,
 		"username": user.Username,
+		"token":    token,
 	})
 }

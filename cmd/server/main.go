@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"realtime-chat-api/internal/handler"
 	"realtime-chat-api/internal/service"
@@ -10,12 +11,18 @@ import (
 )
 
 func main() {
+	// JWT_SECRET is required.
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET environment variable is required")
+	}
+
 	// Create the Hub and start its event loop in a background goroutine.
 	hub := ws.NewHub()
 	go hub.Run()
 
 	// Create the auth service and handler.
-	auth := service.NewAuthService()
+	auth := service.NewAuthService([]byte(jwtSecret))
 	authHandler := handler.NewAuthHandler(auth)
 
 	// Set up routes.

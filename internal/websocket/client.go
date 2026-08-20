@@ -11,10 +11,12 @@ import (
 // It holds the raw connection, a reference to the Hub,
 // and a send channel for outbound messages.
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan Message // outbound messages, buffered
-	room string       // current room ID, empty means global
+	hub      *Hub
+	conn     *websocket.Conn
+	send     chan Message // outbound messages, buffered
+	room     string       // current room ID, empty means global
+	userID   string       // authenticated user ID from JWT
+	username string       // authenticated username from JWT
 }
 
 // NewClient creates a Client bound to a Hub and a WebSocket connection.
@@ -25,6 +27,12 @@ func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 		conn: conn,
 		send: make(chan Message, 256),
 	}
+}
+
+// SetIdentity sets the authenticated user identity from verified JWT claims.
+func (c *Client) SetIdentity(userID, username string) {
+	c.userID = userID
+	c.username = username
 }
 
 // WritePump reads messages from the send channel, encodes them as JSON,

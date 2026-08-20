@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"realtime-chat-api/internal/database"
 	"realtime-chat-api/internal/handler"
 	"realtime-chat-api/internal/service"
 	ws "realtime-chat-api/internal/websocket"
@@ -17,20 +18,29 @@ func main() {
 		log.Fatal("JWT_SECRET environment variable is required")
 	}
 
+	// Connect to PostgreSQL.
+	db, err := database.Connect()
+	if err != nil {
+		log.Fatalf("database connection failed: %v", err)
+	}
+	defer db.Close()
+	log.Println("connected to PostgreSQL")
+
 	// Create the Hub and start its event loop in a background goroutine.
 	hub := ws.NewHub()
 	go hub.Run()
 
 	// Create the auth service and handler.
+	// AuthService still uses in-memory store for now.
 	auth := service.NewAuthService([]byte(jwtSecret))
 	authHandler := handler.NewAuthHandler(auth)
 
 	// Set up routes.
 	mux := http.NewServeMux()
 
-	// WebSocket endpoint.
+	// WebSocket endpoint (requires JWT).
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		handler.HandleWebSocket(hub, w, r)
+		handler.HandleWebSocket(hub, auth, w, r)
 	})
 
 	// Auth endpoints.

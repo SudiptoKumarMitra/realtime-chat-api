@@ -1,14 +1,16 @@
 package service
 
 import (
+	"database/sql"
 	"errors"
-	"sync"
 	"time"
 
 	"realtime-chat-api/internal/model"
+	"realtime-chat-api/internal/repository"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -28,17 +30,16 @@ type Claims struct {
 }
 
 // AuthService handles user registration and login.
-// It owns the in-memory user store, protected by RWMutex.
+// It delegates persistence to a UserRepository.
 type AuthService struct {
-	mu        sync.RWMutex
-	users     map[string]*model.User // username → User
+	repo      repository.UserRepository
 	jwtSecret []byte
 }
 
-// NewAuthService creates an AuthService with the given JWT secret.
-func NewAuthService(jwtSecret []byte) *AuthService {
+// NewAuthService creates an AuthService with the given repository and JWT secret.
+func NewAuthService(repo repository.UserRepository, jwtSecret []byte) *AuthService {
 	return &AuthService{
-		users:     make(map[string]*model.User),
+		repo:      repo,
 		jwtSecret: jwtSecret,
 	}
 }
@@ -52,13 +53,6 @@ func (s *AuthService) Register(username, password string) (*model.User, error) {
 		return nil, ErrPasswordTooShort
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, exists := s.users[username]; exists {
-		return nil, ErrUsernameTaken
-	}
-
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -70,18 +64,24 @@ func (s *AuthService) Register(username, password string) (*model.User, error) {
 		PasswordHash: string(hash),
 	}
 
-	s.users[username] = user
+	if err := s.repo.CreateUser(user); err != nil {
+		if isUniqueViolation(err) {
+			return nil, ErrUsernameTaken
+		}
+		return nil, err
+	}
+
 	return user, nil
 }
 
 // Login verifies credentials and returns the user plus a JWT.
 func (s *AuthService) Login(username, password string) (*model.User, string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	user, exists := s.users[username]
-	if !exists {
-		return nil, "", ErrInvalidCredentials
+	user, err := s.repo.FindByUsername(username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, "", ErrInvalidCredentials
+		}
+		return nil, "", err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
@@ -130,4 +130,14 @@ func (s *AuthService) VerifyToken(tokenString string) (*Claims, error) {
 	}
 
 	return claims, nil
+}
+
+// isUniqueViolation checks if the error is a PostgreSQL unique constraint violation.
+// Uses pgconn.PgError with Code 23505 (unique_violation).
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	return false
 }

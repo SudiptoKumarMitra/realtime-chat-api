@@ -7,6 +7,7 @@ import (
 
 	"realtime-chat-api/internal/database"
 	"realtime-chat-api/internal/handler"
+	"realtime-chat-api/internal/repository"
 	"realtime-chat-api/internal/service"
 	ws "realtime-chat-api/internal/websocket"
 )
@@ -30,9 +31,9 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 
-	// Create the auth service and handler.
-	// AuthService still uses in-memory store for now.
-	auth := service.NewAuthService([]byte(jwtSecret))
+	// Create repository and auth service.
+	userRepo := repository.NewPostgresUserRepository(db)
+	auth := service.NewAuthService(userRepo, []byte(jwtSecret))
 	authHandler := handler.NewAuthHandler(auth)
 
 	// Set up routes.

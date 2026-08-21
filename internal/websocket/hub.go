@@ -1,6 +1,9 @@
 package websocket
 
-import "log"
+import (
+	"log"
+	"sync"
+)
 
 // joinRequest is a request to join a room.
 type joinRequest struct {
@@ -19,6 +22,7 @@ type Hub struct {
 	join        chan joinRequest // incoming join requests
 	clientCount chan chan int    // request/response for client count
 	stop        chan struct{}    // closed to signal shutdown
+	stopOnce    sync.Once       // ensures close(h.stop) runs exactly once
 }
 
 // NewHub creates a Hub with initialized channels.
@@ -35,41 +39,59 @@ func NewHub() *Hub {
 }
 
 // Register sends a client to the register channel.
-// This is safe to call from any goroutine.
+// Safe to call from any goroutine. Drops silently if Hub is stopped.
 func (h *Hub) Register(client *Client) {
-	h.register <- client
+	select {
+	case h.register <- client:
+	case <-h.stop:
+	}
 }
 
 // Unregister sends a client to the unregister channel.
-// This is safe to call from any goroutine.
+// Safe to call from any goroutine. Drops silently if Hub is stopped.
 func (h *Hub) Unregister(client *Client) {
-	h.unregister <- client
+	select {
+	case h.unregister <- client:
+	case <-h.stop:
+	}
 }
 
 // Broadcast sends a message to the broadcast channel.
-// This is safe to call from any goroutine.
+// Safe to call from any goroutine. Drops silently if Hub is stopped.
 func (h *Hub) Broadcast(message Message) {
-	h.broadcast <- message
+	select {
+	case h.broadcast <- message:
+	case <-h.stop:
+	}
 }
 
 // Join sends a join request to the join channel.
-// This is safe to call from any goroutine.
+// Safe to call from any goroutine. Drops silently if Hub is stopped.
 func (h *Hub) Join(client *Client, roomID string) {
-	h.join <- joinRequest{client: client, roomID: roomID}
+	select {
+	case h.join <- joinRequest{client: client, roomID: roomID}:
+	case <-h.stop:
+	}
 }
 
 // ClientCount returns the number of currently connected clients.
-// Safe to call from any goroutine — sends a request to the Hub.
+// Safe to call from any goroutine. Returns 0 if Hub is stopped.
 func (h *Hub) ClientCount() int {
 	resp := make(chan int)
-	h.clientCount <- resp
-	return <-resp
+	select {
+	case h.clientCount <- resp:
+		return <-resp
+	case <-h.stop:
+		return 0
+	}
 }
 
 // Stop signals the Hub to shut down.
-// Closing the stop channel unblocks Run() and closes all client connections.
+// Safe to call multiple times — closing is guarded by sync.Once.
 func (h *Hub) Stop() {
-	close(h.stop)
+	h.stopOnce.Do(func() {
+		close(h.stop)
+	})
 }
 
 // Run starts the Hub event loop.

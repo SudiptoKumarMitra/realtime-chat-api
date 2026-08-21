@@ -3,8 +3,23 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/gorilla/websocket"
+)
+
+const (
+	// Time allowed to write a message to the connection.
+	writeWait = 10 * time.Second
+
+	// Time allowed to read the next pong message from the connection.
+	pongWait = 60 * time.Second
+
+	// Send pings to client with this period. Must be less than pongWait.
+	pingPeriod = 54 * time.Second
+
+	// Maximum message size allowed from the peer.
+	// 0 means no limit (can be added later if needed).
 )
 
 // Client represents one connected WebSocket user.
@@ -40,15 +55,31 @@ func (c *Client) SetIdentity(userID, username string) {
 // When the send channel is closed (by the Hub), the loop exits
 // and the goroutine stops.
 func (c *Client) WritePump() {
-	for message := range c.send {
-		data, err := json.Marshal(message)
-		if err != nil {
-			log.Printf("marshal error: %v", err)
-			continue
-		}
-		if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			log.Printf("write error: %v", err)
-			return
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case message, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			data, err := json.Marshal(message)
+			if err != nil {
+				log.Printf("marshal error: %v", err)
+				continue
+			}
+			if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				return
+			}
+
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -60,10 +91,15 @@ func (c *Client) WritePump() {
 func (c *Client) ReadPump() {
 	defer c.hub.Unregister(c)
 
+	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	for {
 		_, raw, err := c.conn.ReadMessage()
 		if err != nil {
-			log.Printf("read error: %v", err)
 			return
 		}
 
@@ -72,8 +108,6 @@ func (c *Client) ReadPump() {
 			log.Printf("invalid json: %v", err)
 			return
 		}
-
-		log.Printf("received: %s", msg.Content)
 
 		switch msg.Type {
 		case "join":

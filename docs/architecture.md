@@ -1,19 +1,30 @@
 # Chat API Architecture
 
-## Initial WebSocket Architecture
+## WebSocket Architecture
 
 ``` text
-                    WebSocket Clients
-                 /        |        \
-                A         B         C
-                 \        |        /
-                       WebSocket
-                          |
-                    WebSocket Handler
-                          |
-                         Hub
-                          |
-              Connected Client Registry
+WebSocket Client
+      |
+  WebSocket Handler
+      |
+  JWT verification + Origin check
+      |
+  WebSocket Upgrade
+      |
+  Client.SetIdentity()
+      |
+  Hub.Register()
+      |
++----------------------+
+|                      |
+ReadPump            WritePump
+(sync)              (goroutine)
+|                       |
+|                       |
+Hub.Broadcast()      client.send
+Hub.Join()
+|
+Room-based routing
 ```
 
 ## HTTP Architecture
@@ -34,36 +45,62 @@ HTTP Request
 
 ### Handler
 
--   Parse HTTP/WebSocket requests
--   Validate transport-level input
--   Return HTTP responses
--   Establish WebSocket connections
+-   HTTP/WebSocket request parsing
+-   Transport-level validation
+-   JWT verification before WebSocket upgrade
+-   WebSocket origin checking
+-   HTTP responses
+-   WebSocket upgrade
 
 ### Service
 
--   Business rules
--   Conversation/message operations
--   Authorization decisions
+-   User registration and login
+-   Business validation
+-   Bcrypt password hashing/verification
+-   JWT generation and verification
 
 ### Repository
 
 -   Database operations
--   Queries
--   Persistence
+-   Parameterized SQL queries
+-   User persistence
 
 ### Hub
 
--   Track active WebSocket clients
--   Register clients
--   Unregister clients
+-   Sole ownership of the connected-client registry
+-   Register/unregister clients
 -   Broadcast messages
--   Coordinate real-time delivery
+-   Room membership
+-   Room-based routing
+-   Channel-based coordination
 
 ### Client
 
--   Represent one connected WebSocket user/session
--   Own the WebSocket connection
--   Receive/send data through controlled channels
+-   Authenticated WebSocket session
+-   WebSocket connection ownership
+-   User identity and room state
+-   ReadPump (synchronous, inbound messages)
+-   WritePump (goroutine, outbound messages)
+-   Buffered send channel
+
+## Graceful Shutdown
+
+``` text
+SIGINT / SIGTERM
+     |
+HTTP Server Shutdown
+     |
+Hub.Stop()
+     |
+Close WebSocket connections
+     |
+Close PostgreSQL connection pool
+```
+
+Shutdown order ensures no new work enters the system before in-flight
+work completes. The HTTP server stops first so no new connections can
+arrive. The Hub then closes all WebSocket connections. The database
+connection pool closes last.
 
 ## Important Principle
 

@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"testing"
@@ -40,6 +41,7 @@ func cleanupUsers(t *testing.T, db *sql.DB, prefix string) {
 func TestCreateUser_Success(t *testing.T) {
 	db := setupTestDB(t)
 	repo := repository.NewPostgresUserRepository(db)
+	ctx := context.Background()
 
 	testUsername := "test_create_success"
 	cleanupUsers(t, db, "test_")
@@ -51,14 +53,14 @@ func TestCreateUser_Success(t *testing.T) {
 		PasswordHash: "hashed_password_123",
 	}
 
-	err := repo.CreateUser(user)
+	err := repo.CreateUser(ctx, user)
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
 
 	// Verify user was created
 	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE username = $1", testUsername).Scan(&count)
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE username = $1", testUsername).Scan(&count)
 	if err != nil {
 		t.Fatalf("query failed: %v", err)
 	}
@@ -70,6 +72,7 @@ func TestCreateUser_Success(t *testing.T) {
 func TestCreateUser_DuplicateUsername(t *testing.T) {
 	db := setupTestDB(t)
 	repo := repository.NewPostgresUserRepository(db)
+	ctx := context.Background()
 
 	testUsername := "test_create_duplicate"
 	cleanupUsers(t, db, "test_")
@@ -81,7 +84,7 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 		PasswordHash: "hash1",
 	}
 
-	err := repo.CreateUser(user1)
+	err := repo.CreateUser(ctx, user1)
 	if err != nil {
 		t.Fatalf("first CreateUser failed: %v", err)
 	}
@@ -93,7 +96,7 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 		PasswordHash: "hash2",
 	}
 
-	err = repo.CreateUser(user2)
+	err = repo.CreateUser(ctx, user2)
 	if err == nil {
 		t.Error("expected error for duplicate username, got nil")
 	}
@@ -102,6 +105,7 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 func TestFindByUsername_Found(t *testing.T) {
 	db := setupTestDB(t)
 	repo := repository.NewPostgresUserRepository(db)
+	ctx := context.Background()
 
 	testUsername := "test_find_found"
 	cleanupUsers(t, db, "test_")
@@ -114,13 +118,13 @@ func TestFindByUsername_Found(t *testing.T) {
 		PasswordHash: "hashed_password_abc",
 	}
 
-	err := repo.CreateUser(original)
+	err := repo.CreateUser(ctx, original)
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
 
 	// Find the user
-	found, err := repo.FindByUsername(testUsername)
+	found, err := repo.FindByUsername(ctx, testUsername)
 	if err != nil {
 		t.Fatalf("FindByUsername failed: %v", err)
 	}
@@ -139,12 +143,13 @@ func TestFindByUsername_Found(t *testing.T) {
 func TestFindByUsername_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	repo := repository.NewPostgresUserRepository(db)
+	ctx := context.Background()
 
 	cleanupUsers(t, db, "test_")
 	t.Cleanup(func() { cleanupUsers(t, db, "test_") })
 
 	// Try to find a non-existent user
-	found, err := repo.FindByUsername("nonexistent_user_xyz")
+	found, err := repo.FindByUsername(ctx, "nonexistent_user_xyz")
 	if err != sql.ErrNoRows {
 		t.Errorf("expected sql.ErrNoRows, got %v", err)
 	}

@@ -16,6 +16,13 @@ import (
 	ws "realtime-chat-api/internal/websocket"
 )
 
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 func main() {
 	// JWT_SECRET is required.
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -31,13 +38,21 @@ func main() {
 	defer db.Close()
 	log.Println("connected to PostgreSQL")
 
+	// Run migrations.
+	if err := database.RunMigrations(db); err != nil {
+		log.Fatalf("migration failed: %v", err)
+	}
+
 	// Create the Hub and start its event loop in a background goroutine.
 	hub := ws.NewHub()
 	go hub.Run()
 
 	// Create repository and auth service.
 	userRepo := repository.NewPostgresUserRepository(db)
-	auth := service.NewAuthService(userRepo, []byte(jwtSecret))
+	auth, err := service.NewAuthService(userRepo, []byte(jwtSecret))
+	if err != nil {
+		log.Fatalf("auth service init failed: %v", err)
+	}
 	authHandler := handler.NewAuthHandler(auth)
 
 	// Set up routes.
@@ -51,11 +66,15 @@ func main() {
 	// Auth endpoints.
 	authHandler.RegisterRoutes(mux)
 
-	// Create server with explicit struct for graceful shutdown.
-	addr := ":8081"
+	// Create server with timeouts for production hardening.
+	addr := ":" + getEnv("APP_PORT", "8081")
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Start server in a goroutine.

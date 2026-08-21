@@ -15,11 +15,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server ./cmd/server
 FROM alpine:3.20
 
 RUN apk --no-cache add ca-certificates
+RUN adduser -D -g '' appuser
 
 WORKDIR /app
 COPY --from=builder /app/server .
 COPY migrations/ ./migrations/
 
+USER appuser
 EXPOSE 8081
 
 CMD ["./server"]

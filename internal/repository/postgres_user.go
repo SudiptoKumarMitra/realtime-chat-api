@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 
 	"realtime-chat-api/internal/model"
@@ -17,8 +18,8 @@ func NewPostgresUserRepository(db *sql.DB) *PostgresUserRepository {
 }
 
 // CreateUser inserts a new user row.
-func (r *PostgresUserRepository) CreateUser(user *model.User) error {
-	_, err := r.db.Exec(
+func (r *PostgresUserRepository) CreateUser(ctx context.Context, user *model.User) error {
+	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)`,
 		user.ID, user.Username, user.PasswordHash,
 	)
@@ -27,9 +28,9 @@ func (r *PostgresUserRepository) CreateUser(user *model.User) error {
 
 // FindByUsername retrieves a user by username.
 // Returns sql.ErrNoRows if no match is found.
-func (r *PostgresUserRepository) FindByUsername(username string) (*model.User, error) {
+func (r *PostgresUserRepository) FindByUsername(ctx context.Context, username string) (*model.User, error) {
 	user := &model.User{}
-	err := r.db.QueryRow(
+	err := r.db.QueryRowContext(ctx,
 		`SELECT id, username, password_hash FROM users WHERE username = $1`,
 		username,
 	).Scan(&user.ID, &user.Username, &user.PasswordHash)

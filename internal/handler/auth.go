@@ -29,6 +29,8 @@ func (h *authHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -38,7 +40,7 @@ func (h *authHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.auth.Register(req.Username, req.Password)
+	user, err := h.auth.Register(r.Context(), req.Username, req.Password)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, service.ErrUsernameTaken) {
@@ -61,6 +63,8 @@ func (h *authHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -70,7 +74,7 @@ func (h *authHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, token, err := h.auth.Login(req.Username, req.Password)
+	user, token, err := h.auth.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)

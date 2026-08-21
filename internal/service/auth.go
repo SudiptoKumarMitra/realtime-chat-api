@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -20,6 +21,8 @@ var (
 	ErrUsernameEmpty      = errors.New("username cannot be empty")
 	ErrPasswordTooShort   = errors.New("password must be at least 6 characters")
 	ErrJWTSecretNotSet    = errors.New("JWT_SECRET environment variable is required")
+	ErrJWTSecretTooShort  = errors.New("JWT_SECRET must be at least 32 bytes")
+	ErrUsernameTooLong    = errors.New("username must be 255 characters or fewer")
 )
 
 // Claims defines the JWT token claims.
@@ -37,17 +40,24 @@ type AuthService struct {
 }
 
 // NewAuthService creates an AuthService with the given repository and JWT secret.
-func NewAuthService(repo repository.UserRepository, jwtSecret []byte) *AuthService {
+// Returns an error if the secret is shorter than 32 bytes.
+func NewAuthService(repo repository.UserRepository, jwtSecret []byte) (*AuthService, error) {
+	if len(jwtSecret) < 32 {
+		return nil, ErrJWTSecretTooShort
+	}
 	return &AuthService{
 		repo:      repo,
 		jwtSecret: jwtSecret,
-	}
+	}, nil
 }
 
 // Register creates a new user with a hashed password.
-func (s *AuthService) Register(username, password string) (*model.User, error) {
+func (s *AuthService) Register(ctx context.Context, username, password string) (*model.User, error) {
 	if username == "" {
 		return nil, ErrUsernameEmpty
+	}
+	if len(username) > 255 {
+		return nil, ErrUsernameTooLong
 	}
 	if len(password) < 6 {
 		return nil, ErrPasswordTooShort
@@ -64,7 +74,7 @@ func (s *AuthService) Register(username, password string) (*model.User, error) {
 		PasswordHash: string(hash),
 	}
 
-	if err := s.repo.CreateUser(user); err != nil {
+	if err := s.repo.CreateUser(ctx, user); err != nil {
 		if isUniqueViolation(err) {
 			return nil, ErrUsernameTaken
 		}
@@ -75,8 +85,8 @@ func (s *AuthService) Register(username, password string) (*model.User, error) {
 }
 
 // Login verifies credentials and returns the user plus a JWT.
-func (s *AuthService) Login(username, password string) (*model.User, string, error) {
-	user, err := s.repo.FindByUsername(username)
+func (s *AuthService) Login(ctx context.Context, username, password string) (*model.User, string, error) {
+	user, err := s.repo.FindByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, "", ErrInvalidCredentials

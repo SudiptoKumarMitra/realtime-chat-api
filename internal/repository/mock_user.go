@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 
 	"realtime-chat-api/internal/model"
@@ -23,7 +24,7 @@ func NewMockUserRepository() *MockUserRepository {
 
 // CreateUser stores the user in memory.
 // Returns a simulated unique violation error if the username already exists.
-func (m *MockUserRepository) CreateUser(user *model.User) error {
+func (m *MockUserRepository) CreateUser(_ context.Context, user *model.User) error {
 	if m.Err != nil {
 		return m.Err
 	}
@@ -36,7 +37,7 @@ func (m *MockUserRepository) CreateUser(user *model.User) error {
 
 // FindByUsername retrieves a user from memory.
 // Returns sql.ErrNoRows if not found.
-func (m *MockUserRepository) FindByUsername(username string) (*model.User, error) {
+func (m *MockUserRepository) FindByUsername(_ context.Context, username string) (*model.User, error) {
 	if m.Err != nil {
 		return nil, m.Err
 	}

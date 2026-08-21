@@ -1,6 +1,7 @@
 package websocket_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,14 +16,17 @@ import (
 	wslib "github.com/gorilla/websocket"
 )
 
-const testSecret = "test-secret-for-ws-integration"
+const testSecret = "test-secret-for-ws-integration-32bytes!"
 
 // setupTestServer creates a test HTTP server with WebSocket endpoint.
 func setupTestServer(t *testing.T) (*service.AuthService, *ws.Hub, string) {
 	t.Helper()
 
 	repo := repository.NewMockUserRepository()
-	auth := service.NewAuthService(repo, []byte(testSecret))
+	auth, err := service.NewAuthService(repo, []byte(testSecret))
+	if err != nil {
+		t.Fatalf("NewAuthService failed: %v", err)
+	}
 	hub := ws.NewHub()
 	go hub.Run()
 
@@ -42,11 +46,11 @@ func setupTestServer(t *testing.T) (*service.AuthService, *ws.Hub, string) {
 // registerAndGetToken registers a user and returns a JWT.
 func registerAndGetToken(t *testing.T, auth *service.AuthService, username string) string {
 	t.Helper()
-	_, err := auth.Register(username, "password123")
+	_, err := auth.Register(context.Background(), username, "password123")
 	if err != nil {
 		t.Fatalf("register %s failed: %v", username, err)
 	}
-	_, token, err := auth.Login(username, "password123")
+	_, token, err := auth.Login(context.Background(), username, "password123")
 	if err != nil {
 		t.Fatalf("login %s failed: %v", username, err)
 	}

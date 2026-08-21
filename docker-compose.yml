@@ -3,8 +3,10 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: chatdb
+    # Expose 5432 for local development and integration tests.
+    # In production, remove this — the API connects via Docker DNS.
     ports:
       - "5432:5432"
     volumes:
@@ -20,8 +22,9 @@ services:
     ports:
       - "8081:8081"
     environment:
-      DATABASE_URL: postgresql://postgres:secret@postgres:5432/chatdb?sslmode=disable
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/chatdb?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS:-}
     depends_on:
       postgres:
         condition: service_healthy

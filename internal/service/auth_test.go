@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -10,20 +11,24 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const testJWTSecret = "test-secret-key-for-unit-tests"
+const testJWTSecret = "test-secret-key-for-unit-tests-32bytes"
 
-func setupAuthService() (*service.AuthService, *repository.MockUserRepository) {
+func setupAuthService(t *testing.T) (*service.AuthService, *repository.MockUserRepository) {
+	t.Helper()
 	repo := repository.NewMockUserRepository()
-	auth := service.NewAuthService(repo, []byte(testJWTSecret))
+	auth, err := service.NewAuthService(repo, []byte(testJWTSecret))
+	if err != nil {
+		t.Fatalf("NewAuthService failed: %v", err)
+	}
 	return auth, repo
 }
 
 // --- Registration tests ---
 
 func TestRegister_EmptyUsername(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
-	user, err := auth.Register("", "password123")
+	user, err := auth.Register(context.Background(), "", "password123")
 	if user != nil {
 		t.Errorf("expected nil user, got %v", user)
 	}
@@ -33,9 +38,9 @@ func TestRegister_EmptyUsername(t *testing.T) {
 }
 
 func TestRegister_ShortPassword(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
-	user, err := auth.Register("alice", "abc")
+	user, err := auth.Register(context.Background(), "alice", "abc")
 	if user != nil {
 		t.Errorf("expected nil user, got %v", user)
 	}
@@ -45,9 +50,9 @@ func TestRegister_ShortPassword(t *testing.T) {
 }
 
 func TestRegister_Success(t *testing.T) {
-	auth, repo := setupAuthService()
+	auth, repo := setupAuthService(t)
 
-	user, err := auth.Register("alice", "password123")
+	user, err := auth.Register(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -75,16 +80,16 @@ func TestRegister_Success(t *testing.T) {
 }
 
 func TestRegister_DuplicateUsername(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
 	// Register first user
-	_, err := auth.Register("alice", "password123")
+	_, err := auth.Register(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("first register failed: %v", err)
 	}
 
 	// Try to register same username again
-	user, err := auth.Register("alice", "anotherpassword")
+	user, err := auth.Register(context.Background(), "alice", "anotherpassword")
 	if user != nil {
 		t.Errorf("expected nil user on duplicate, got %v", user)
 	}
@@ -96,9 +101,9 @@ func TestRegister_DuplicateUsername(t *testing.T) {
 // --- Login tests ---
 
 func TestLogin_UnknownUser(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
-	user, token, err := auth.Login("unknown", "password123")
+	user, token, err := auth.Login(context.Background(), "unknown", "password123")
 	if user != nil {
 		t.Errorf("expected nil user, got %v", user)
 	}
@@ -111,16 +116,16 @@ func TestLogin_UnknownUser(t *testing.T) {
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
 	// Register a user
-	_, err := auth.Register("alice", "password123")
+	_, err := auth.Register(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 
 	// Try to login with wrong password
-	user, token, err := auth.Login("alice", "wrongpassword")
+	user, token, err := auth.Login(context.Background(), "alice", "wrongpassword")
 	if user != nil {
 		t.Errorf("expected nil user, got %v", user)
 	}
@@ -133,16 +138,16 @@ func TestLogin_WrongPassword(t *testing.T) {
 }
 
 func TestLogin_Success(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
 	// Register a user
-	_, err := auth.Register("alice", "password123")
+	_, err := auth.Register(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 
 	// Login with correct credentials
-	user, token, err := auth.Login("alice", "password123")
+	user, token, err := auth.Login(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("login failed: %v", err)
 	}
@@ -160,15 +165,15 @@ func TestLogin_Success(t *testing.T) {
 // --- JWT tests ---
 
 func TestVerifyToken_Valid(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
 	// Register and login to get a token
-	_, err := auth.Register("alice", "password123")
+	_, err := auth.Register(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 
-	_, token, err := auth.Login("alice", "password123")
+	_, token, err := auth.Login(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("login failed: %v", err)
 	}
@@ -190,7 +195,7 @@ func TestVerifyToken_Valid(t *testing.T) {
 }
 
 func TestVerifyToken_InvalidString(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
 	claims, err := auth.VerifyToken("this-is-not-a-valid-token")
 	if err == nil {
@@ -202,22 +207,31 @@ func TestVerifyToken_InvalidString(t *testing.T) {
 }
 
 func TestVerifyToken_WrongSecret(t *testing.T) {
+	secret1 := "secret-one-for-wrong-secret-test-1111"
+	secret2 := "secret-two-for-wrong-secret-test-2222"
+
 	// Create auth service with one secret
 	repo1 := repository.NewMockUserRepository()
-	auth1 := service.NewAuthService(repo1, []byte("secret-one"))
+	auth1, err := service.NewAuthService(repo1, []byte(secret1))
+	if err != nil {
+		t.Fatalf("NewAuthService failed: %v", err)
+	}
 
 	// Create another auth service with different secret
 	repo2 := repository.NewMockUserRepository()
-	auth2 := service.NewAuthService(repo2, []byte("secret-two"))
+	auth2, err := service.NewAuthService(repo2, []byte(secret2))
+	if err != nil {
+		t.Fatalf("NewAuthService failed: %v", err)
+	}
 
 	// Register user with auth1
-	_, err := auth1.Register("alice", "password123")
+	_, err = auth1.Register(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 
 	// Login with auth1 to get a token
-	_, token, err := auth1.Login("alice", "password123")
+	_, token, err := auth1.Login(context.Background(), "alice", "password123")
 	if err != nil {
 		t.Fatalf("login failed: %v", err)
 	}
@@ -233,7 +247,7 @@ func TestVerifyToken_WrongSecret(t *testing.T) {
 }
 
 func TestVerifyToken_Expired(t *testing.T) {
-	auth, _ := setupAuthService()
+	auth, _ := setupAuthService(t)
 
 	// Manually create an expired token
 	claims := service.Claims{
@@ -256,5 +270,13 @@ func TestVerifyToken_Expired(t *testing.T) {
 	}
 	if result != nil {
 		t.Errorf("expected nil claims, got %v", result)
+	}
+}
+
+func TestNewAuthService_ShortSecret(t *testing.T) {
+	repo := repository.NewMockUserRepository()
+	_, err := service.NewAuthService(repo, []byte("short"))
+	if err != service.ErrJWTSecretTooShort {
+		t.Errorf("expected ErrJWTSecretTooShort, got %v", err)
 	}
 }

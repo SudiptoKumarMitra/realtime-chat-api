@@ -24,10 +24,3 @@ docker-compose.override.yml
 # OS
 .DS_Store
 Thumbs.db
-
-# OpenCode / AI workflow files
-AGENTS.md
-opencode.json
-.opencode/
-project_status.md
-docs/

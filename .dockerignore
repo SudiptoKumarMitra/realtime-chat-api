@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Environment
+.env
+.env.*
+
+# OpenCode / AI workflow files
+AGENTS.md
+opencode.json
+.opencode/
+project_status.md
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build/test artifacts
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out

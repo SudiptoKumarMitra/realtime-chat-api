@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"realtime-chat-api/internal/database"
 	"realtime-chat-api/internal/handler"
@@ -47,10 +51,43 @@ func main() {
 	// Auth endpoints.
 	authHandler.RegisterRoutes(mux)
 
+	// Create server with explicit struct for graceful shutdown.
 	addr := ":8081"
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	// Start server in a goroutine.
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
 	log.Printf("server starting on %s", addr)
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("server error: %v", err)
+	// Wait for interrupt signal.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	log.Printf("received signal: %s, shutting down...", sig)
+
+	// Shutdown sequence with 10-second timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 1. Stop HTTP server — stops accepting new connections, waits for in-flight.
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
 	}
+
+	// 2. Stop Hub — closes all WebSocket connections.
+	hub.Stop()
+
+	// 3. Close database connection pool.
+	if err := db.Close(); err != nil {
+		log.Printf("database close error: %v", err)
+	}
+
+	log.Println("server stopped")
 }

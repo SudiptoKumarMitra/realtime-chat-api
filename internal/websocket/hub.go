@@ -18,6 +18,7 @@ type Hub struct {
 	broadcast   chan Message     // incoming messages to send to all clients
 	join        chan joinRequest // incoming join requests
 	clientCount chan chan int    // request/response for client count
+	stop        chan struct{}    // closed to signal shutdown
 }
 
 // NewHub creates a Hub with initialized channels.
@@ -29,6 +30,7 @@ func NewHub() *Hub {
 		broadcast:   make(chan Message),
 		join:        make(chan joinRequest),
 		clientCount: make(chan chan int),
+		stop:        make(chan struct{}),
 	}
 }
 
@@ -64,6 +66,12 @@ func (h *Hub) ClientCount() int {
 	return <-resp
 }
 
+// Stop signals the Hub to shut down.
+// Closing the stop channel unblocks Run() and closes all client connections.
+func (h *Hub) Stop() {
+	close(h.stop)
+}
+
 // Run starts the Hub event loop.
 // It blocks forever, processing register/unregister events one at a time.
 // This goroutine is the ONLY code that touches the clients map.
@@ -88,6 +96,14 @@ func (h *Hub) Run() {
 
 		case resp := <-h.clientCount:
 			resp <- len(h.clients)
+
+		case <-h.stop:
+			log.Printf("hub stopping, closing %d connections", len(h.clients))
+			for client := range h.clients {
+				close(client.send)
+				client.conn.Close()
+			}
+			return
 
 		case message := <-h.broadcast:
 			for client := range h.clients {

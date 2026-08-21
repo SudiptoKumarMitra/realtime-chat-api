@@ -2,9 +2,12 @@ package service_test
 
 import (
 	"testing"
+	"time"
 
 	"realtime-chat-api/internal/repository"
 	"realtime-chat-api/internal/service"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const testJWTSecret = "test-secret-key-for-unit-tests"
@@ -226,5 +229,32 @@ func TestVerifyToken_WrongSecret(t *testing.T) {
 	}
 	if claims != nil {
 		t.Errorf("expected nil claims, got %v", claims)
+	}
+}
+
+func TestVerifyToken_Expired(t *testing.T) {
+	auth, _ := setupAuthService()
+
+	// Manually create an expired token
+	claims := service.Claims{
+		UserID:   "user-123",
+		Username: "alice",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(testJWTSecret))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+
+	// Verify should reject the expired token
+	result, err := auth.VerifyToken(tokenString)
+	if err == nil {
+		t.Error("expected error for expired token")
+	}
+	if result != nil {
+		t.Errorf("expected nil claims, got %v", result)
 	}
 }

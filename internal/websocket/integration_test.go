@@ -83,6 +83,19 @@ func waitForClientCount(t *testing.T, hub *ws.Hub, expected int, timeout time.Du
 	return false
 }
 
+// waitForRoom waits until a client with the given username has joined the expected room.
+func waitForRoom(t *testing.T, hub *ws.Hub, username, expectedRoom string, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if hub.RoomByUsername(username) == expectedRoom {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
 // --- Connection tests ---
 
 func TestWS_ValidConnection(t *testing.T) {
@@ -227,7 +240,12 @@ func TestWS_RoomRouting(t *testing.T) {
 	}
 
 	// Wait for joins to propagate
-	time.Sleep(100 * time.Millisecond)
+	if !waitForRoom(t, hub, "alice", "room1", 2*time.Second) {
+		t.Fatal("alice did not join room1 in time")
+	}
+	if !waitForRoom(t, hub, "bob", "room2", 2*time.Second) {
+		t.Fatal("bob did not join room2 in time")
+	}
 
 	// Set read deadlines
 	connAlice.SetReadDeadline(time.Now().Add(2 * time.Second))

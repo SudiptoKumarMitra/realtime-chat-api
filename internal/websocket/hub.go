@@ -11,6 +11,12 @@ type joinRequest struct {
 	roomID string
 }
 
+// roomQueryRequest is a request to look up a client's room by username.
+type roomQueryRequest struct {
+	username string
+	resp     chan string
+}
+
 // Hub manages all connected WebSocket clients.
 // Only the Hub goroutine reads or writes the clients map.
 // Other goroutines communicate via channels.
@@ -21,6 +27,7 @@ type Hub struct {
 	broadcast   chan Message     // incoming messages to send to all clients
 	join        chan joinRequest // incoming join requests
 	clientCount chan chan int    // request/response for client count
+	roomQuery   chan roomQueryRequest // request/response for room lookup by username
 	stop        chan struct{}    // closed to signal shutdown
 	stopOnce    sync.Once       // ensures close(h.stop) runs exactly once
 }
@@ -34,6 +41,7 @@ func NewHub() *Hub {
 		broadcast:   make(chan Message),
 		join:        make(chan joinRequest),
 		clientCount: make(chan chan int),
+		roomQuery:   make(chan roomQueryRequest),
 		stop:        make(chan struct{}),
 	}
 }
@@ -86,6 +94,19 @@ func (h *Hub) ClientCount() int {
 	}
 }
 
+// RoomByUsername returns the room ID for the client with the given username.
+// Safe to call from any goroutine. Returns "" if Hub is stopped or user not found.
+// Primarily for test observability.
+func (h *Hub) RoomByUsername(username string) string {
+	resp := make(chan string)
+	select {
+	case h.roomQuery <- roomQueryRequest{username: username, resp: resp}:
+		return <-resp
+	case <-h.stop:
+		return ""
+	}
+}
+
 // Stop signals the Hub to shut down.
 // Safe to call multiple times — closing is guarded by sync.Once.
 func (h *Hub) Stop() {
@@ -114,10 +135,20 @@ func (h *Hub) Run() {
 
 		case req := <-h.join:
 			req.client.room = req.roomID
-			log.Printf("client joined room: %s", req.roomID)
+			log.Printf("client joined room")
 
 		case resp := <-h.clientCount:
 			resp <- len(h.clients)
+
+		case req := <-h.roomQuery:
+			room := ""
+			for client := range h.clients {
+				if client.username == req.username {
+					room = client.room
+					break
+				}
+			}
+			req.resp <- room
 
 		case <-h.stop:
 			log.Printf("hub stopping, closing %d connections", len(h.clients))

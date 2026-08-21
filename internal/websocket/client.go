@@ -105,7 +105,7 @@ func (c *Client) ReadPump() {
 
 		var msg Message
 		if err := json.Unmarshal(raw, &msg); err != nil {
-			log.Printf("invalid json: %v", err)
+			log.Printf("invalid json from client")
 			return
 		}
 

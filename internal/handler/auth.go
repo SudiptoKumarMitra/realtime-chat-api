@@ -48,13 +48,17 @@ func (h *authHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(user)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
 }
 
 func (h *authHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -78,15 +82,19 @@ func (h *authHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"message":  "login successful",
 		"user_id":  user.ID,
 		"username": user.Username,
 		"token":    token,
-	})
+	}); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
 }

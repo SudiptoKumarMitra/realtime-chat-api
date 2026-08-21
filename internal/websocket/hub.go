@@ -12,21 +12,23 @@ type joinRequest struct {
 // Only the Hub goroutine reads or writes the clients map.
 // Other goroutines communicate via channels.
 type Hub struct {
-	clients    map[*Client]bool // all connected clients
-	register   chan *Client     // incoming registration requests
-	unregister chan *Client     // incoming disconnect requests
-	broadcast  chan Message     // incoming messages to send to all clients
-	join       chan joinRequest // incoming join requests
+	clients     map[*Client]bool // all connected clients
+	register    chan *Client     // incoming registration requests
+	unregister  chan *Client     // incoming disconnect requests
+	broadcast   chan Message     // incoming messages to send to all clients
+	join        chan joinRequest // incoming join requests
+	clientCount chan chan int    // request/response for client count
 }
 
 // NewHub creates a Hub with initialized channels.
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan Message),
-		join:       make(chan joinRequest),
+		clients:     make(map[*Client]bool),
+		register:    make(chan *Client),
+		unregister:  make(chan *Client),
+		broadcast:   make(chan Message),
+		join:        make(chan joinRequest),
+		clientCount: make(chan chan int),
 	}
 }
 
@@ -54,6 +56,14 @@ func (h *Hub) Join(client *Client, roomID string) {
 	h.join <- joinRequest{client: client, roomID: roomID}
 }
 
+// ClientCount returns the number of currently connected clients.
+// Safe to call from any goroutine — sends a request to the Hub.
+func (h *Hub) ClientCount() int {
+	resp := make(chan int)
+	h.clientCount <- resp
+	return <-resp
+}
+
 // Run starts the Hub event loop.
 // It blocks forever, processing register/unregister events one at a time.
 // This goroutine is the ONLY code that touches the clients map.
@@ -75,6 +85,9 @@ func (h *Hub) Run() {
 		case req := <-h.join:
 			req.client.room = req.roomID
 			log.Printf("client joined room: %s", req.roomID)
+
+		case resp := <-h.clientCount:
+			resp <- len(h.clients)
 
 		case message := <-h.broadcast:
 			for client := range h.clients {
